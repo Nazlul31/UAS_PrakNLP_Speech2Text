@@ -12,8 +12,6 @@ Aplikasi ini mengolah input audio melalui beberapa tahapan modular yang divisual
 
 ## Tata Letak Direktori Proyek
 
-## 📁 Tata Letak Direktori Proyek
-
 ```text
 NLP_Checkpoint2_UAS/
 │
@@ -38,6 +36,8 @@ NLP_Checkpoint2_UAS/
 │
 ├── .env                   # Menyimpan Gemini API Key
 └── requirements.txt       # Daftar dependensi Python
+
+```
 
 ## Ketentuan Teknis & Konfigurasi Model
 
