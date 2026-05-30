@@ -185,19 +185,19 @@ async def voice_chat(
             temp_file.write(file_bytes)
 
         transcript = transcribe_audio_file(upload_path)
-        print(f"[DEBUG] STT completed: '{transcript[:80] if len(transcript) > 80 else transcript}'")
+        print(f"[DEBUG] STT completed: '{transcript}'")
         if transcript.startswith("[ERROR]"):
             raise HTTPException(status_code=500, detail=transcript)
 
         normalized_text = normalize_text(transcript)
         prompt_text = normalized_text if mode == "normalized" else transcript
-        print(f"[DEBUG] Calling LLM with prompt: '{prompt_text[:80] if len(prompt_text) > 80 else prompt_text}'")
+        print(f"[DEBUG] Calling LLM with prompt: '{prompt_text}'")
         llm_response = generate_response(prompt_text)
-        print(f"[DEBUG] LLM response: '{llm_response[:80] if len(llm_response) > 80 else llm_response}'")
+        print(f"[DEBUG] LLM response: '{llm_response}'")
         if llm_response.startswith("[ERROR]"):
             raise HTTPException(status_code=500, detail=llm_response)
 
-        print(f"[DEBUG] Calling TTS with text: '{llm_response[:80] if len(llm_response) > 80 else llm_response}'")
+        print(f"[DEBUG] Calling TTS with text: '{llm_response}'")
         output_audio_path = transcribe_text_to_speech(llm_response)
         cleanup_task = BackgroundTask(lambda: [safe_delete(upload_path), safe_delete(output_audio_path)])
 

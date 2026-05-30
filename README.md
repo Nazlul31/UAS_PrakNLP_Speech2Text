@@ -34,9 +34,13 @@ NLP_Checkpoint2_UAS/
 ├── gradio_app/
 │   └── app.py             # Frontend dengan Gradio
 │
+├── tests/                 # Direktori unit test
+│   └── test_language_analysis.py
+│
 ├── .env                   # Menyimpan Gemini API Key
-└── requirements.txt       # Daftar dependensi Python
-
+├── requirements.txt       # Daftar dependensi Python
+├── analisis_pipeline.py   # Batch pipeline untuk evaluasi korpus
+└── processing.py          # Modul prapemrosesan audio kustom
 ```
 
 ## Ketentuan Teknis & Konfigurasi Model
@@ -63,6 +67,13 @@ Ikuti langkah-langkah di bawah ini untuk menjalankan aplikasi menggunakan termin
    python gradio_app/app.py
    
    *Aplikasi web frontend otomatis berjalan. Silakan buka browser Anda dan akses alamat [http://127.0.0.1:7860](http://127.0.0.1:7860) untuk menguji sistem.*
+
+3. Menjalankan Evaluasi Batch (Uji Korpus):
+   Jika Anda ingin memproses seluruh dataset audio di folder `data/audio` secara otomatis dan menghasilkan laporannya, jalankan skrip evaluasi:
+   
+   python analisis_pipeline.py
+   
+   *Hasil analisis evaluasi korpus akan tersimpan secara otomatis di direktori `log/analisis_pipeline.csv`.*
 
 ## Informasi Akademik
 
