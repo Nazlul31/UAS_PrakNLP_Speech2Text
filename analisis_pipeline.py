@@ -13,6 +13,7 @@ import re
 from typing import Dict, Optional
 
 import pandas as pd
+from langdetect import detect_langs
 
 from app.llm import generate_response
 from app.stt import transcribe_speech_to_text
@@ -21,18 +22,38 @@ from processing import preprocess_audio, scan_audio_files
 
 
 def _analyze_code_switching(text: str) -> Dict[str, float]:
-    """Heuristik sederhana: bandingkan token ASCII (kemungkinan EN) vs sisanya."""
-    if not text:
-        return {"EN": 0.0, "OTHER": 0.0}
+    """Menghitung rasio pencampuran bahasa secara spesifik untuk masing-masing 
+    bahasa: Inggris (EN), Indonesia (ID), dan Arab (AR) menggunakan langdetect."""
+    if not text or not re.sub(r"[^\w\s]", "", text).strip():
+        return {"EN": 0.0, "ID": 0.0, "AR": 0.0}
 
-    tokens = re.findall(r"\w+", text)
-    if not tokens:
-        return {"EN": 0.0, "OTHER": 0.0}
-
-    en = sum(1 for t in tokens if re.match(r"^[A-Za-z]+$", t))
-    other = len(tokens) - en
-    total = len(tokens)
-    return {"EN": round(en / total, 3), "OTHER": round(other / total, 3)}
+    try:
+        # Bersihkan teks dari simbol-simbol mengganggu agar fokus pada karakter kata
+        text_clean = re.sub(r"[^\w\s]", "", text)
+        
+        # Ambil prediksi semua bahasa beserta probabilitas distribusi skornya
+        predictions = detect_langs(text_clean)
+        
+        # Inisialisasi awal nilai untuk masing-masing bahasa target
+        lang_ratios = {"EN": 0.0, "ID": 0.0, "AR": 0.0}
+        
+        for pred in predictions:
+            if pred.lang == 'en':
+                lang_ratios["EN"] = round(pred.prob, 3)
+            elif pred.lang in ['id', 'ms']:  # 'ms' (Melayu) digabung ke ID karena kemiripan linguistik n-gram
+                lang_ratios["ID"] = round(lang_ratios["ID"] + pred.prob, 3)
+            elif pred.lang == 'ar':
+                lang_ratios["AR"] = round(pred.prob, 3)
+            else:
+                # Mengabaikan sisa probabilitas bahasa lain di luar batasan korpus penelitian
+                pass
+                
+        # Memastikan total probabilitas distribusi tetap bernilai logis dan presisi
+        return lang_ratios
+        
+    except Exception:
+        # Fallback aman jika teks terlalu pendek atau gagal diidentifikasi
+        return {"EN": 0.0, "ID": 1.0, "AR": 0.0}
 
 
 def _select_files(folder_corpus_audio: str, student_prefix: Optional[str], limit_other: Optional[int]):
@@ -57,12 +78,7 @@ def jalankan_uji_korpus(
     limit_other: Optional[int] = None,
     student_prefix: Optional[str] = None,
 ):
-    """Jalankan evaluasi batch pada folder audio.
-
-    - `limit_other`: bila diisi, hanya ambil N file non-student tambahan.
-    - `student_prefix`: bila diisi, prioritaskan file dengan prefix tersebut.
-      Bila None, semua file diproses.
-    """
+    """Jalankan evaluasi batch pada folder audio secara stateless bebas amnesia konteks."""
     hasil_analisis = []
 
     if not os.path.exists(folder_corpus_audio):
@@ -94,10 +110,16 @@ def jalankan_uji_korpus(
                 except OSError:
                     pass
 
+                # 1. Jalankan komponen speech-to-text (STT) & normalisasi teks dasar
                 transcript = transcribe_speech_to_text(audio_bytes)
                 normalized = normalize_text(transcript)
+                
+                # 2. Hitung rasio code-switching spesifik (EN, ID, AR)
                 ratios = _analyze_code_switching(transcript)
-                llm_resp = generate_response(normalized)
+                
+                # 3. Panggil fungsi LLM secara langsung dan bersih (Stateless)
+                raw_llm_resp = generate_response(normalized)
+                llm_resp = normalize_text(raw_llm_resp)
 
                 elapsed = round(time.time() - start_time, 2)
                 hasil_analisis.append(
@@ -126,13 +148,15 @@ def jalankan_uji_korpus(
                     }
                 )
 
-            # pacing to avoid hitting rate limits
-            time.sleep(4)
+            # Jeda waktu aman untuk menjaga kestabilan RPM kuota API Google AI Studio
+            time.sleep(6)
 
+        # Mapping data hasil eksekusi ke struktur baris DataFrame
         rows = []
         for item in hasil_analisis:
             ratios = item.get("ratios") or {}
-            ratios_str = ", ".join([f"{k}:{v}" for k, v in ratios.items()]) if ratios else ""
+            # Mengubah format cetak di CSV menjadi EN:0.x, ID:0.y, AR:0.z secara rapi
+            ratios_str = ", ".join([f"{k}:{v}" for k, v in ratios.items()]) if ratios else "EN:0.0, ID:0.0, AR:0.0"
             rows.append(
                 {
                     "File": item["file"],
@@ -157,6 +181,7 @@ def jalankan_uji_korpus(
 
 if __name__ == "__main__":
     try:
-        jalankan_uji_korpus("data/audio")
+
+        jalankan_uji_korpus("data/audio", limit_other=0, student_prefix="2336_")
     except Exception as exc:
         print(f"Error: {exc}")

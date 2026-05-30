@@ -35,29 +35,25 @@ MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
 if not GOOGLE_API_KEY:
     raise RuntimeError("GEMINI_API_KEY belum ditemukan. Buat file .env di root project.")
 
-# Memperketat instruksi agar model langsung menjawab tanpa analisis tersembunyi
 system_instruction = """
-You are a responsive, intelligent, and fluent virtual assistant.
-You answer voice-chat input from multilingual code-switching speech.
+You are a direct conversational virtual assistant.
+Task: Answer the user's question immediately.
 
-Rules:
-- Default language: Indonesian.
-- Answer DIRECTLY to the point. Do NOT output any analysis, thoughts, goals, or translation blocks.
-- Keep answers polite, clear, and complete, maximum 2-3 sentences.
-- Do not repeat the user's question.
-- If the input is unclear, ask one short clarification question.
-- If you do not know the answer, say honestly that you do not know.
+STRICT RULES:
+1. Output ONLY the final conversational answer in Indonesian.
+2. Absolutely NO explanations, NO drafts, NO thoughts, NO format logs, NO self-corrections, and NO analysis text.
+3. Maximum 2-3 sentences.
 """.strip()
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
-# Menaikkan max_output_tokens menjadi 512 agar teks jawaban tidak terpotong di tengah kalimat
 chat_config = types.GenerateContentConfig(
     system_instruction=system_instruction,
-    temperature=0.4,  # Menurunkan temperatur sedikit agar jawaban lebih fokus dan konsisten
-    max_output_tokens=512,
+    temperature=0.3,
+    max_output_tokens=1024,
     http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT * 1000),
 )
+
 history_adapter = TypeAdapter(list[types.Content])
 
 
@@ -137,10 +133,6 @@ def load_chat_history():
         return client.chats.create(model=MODEL, config=chat_config)
 
 
-# Memaksa pembuatan sesi chat baru yang bersih
-chat = client.chats.create(model=MODEL, config=chat_config)
-
-
 def generate_response(prompt: str) -> str:
     normalized_prompt = normalize_text(prompt)
     if not normalized_prompt:
@@ -150,11 +142,16 @@ def generate_response(prompt: str) -> str:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             _wait_for_rate_limit()
-            print(f"[DEBUG-LLM] Attempt {attempt}/{MAX_RETRIES}: Sending to Gemini API...")
-            response = chat.send_message(normalized_prompt)
+            print(f"[DEBUG-LLM] Attempt {attempt}/{MAX_RETRIES}: Sending to Gemini API (Stateless)...")
+            
+            # Eksekusi secara stateless via generate_content agar ingatan audio terbilas sempurna
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=normalized_prompt,
+                config=chat_config
+            )
             print(f"[DEBUG-LLM] API returned response object: {type(response)}")
             
-            # Try multiple extraction paths
             resp_text = None
             
             # Path 1: Direct response.text
@@ -186,35 +183,59 @@ def generate_response(prompt: str) -> str:
                 except Exception as e:
                     print(f"[DEBUG-LLM] [PATH-3] Error checking finish_reason: {e}")
             
-            # Debug: Print full response structure
-            if not resp_text:
-                print(f"[DEBUG-LLM] Full response object:")
-                print(f"  - dir(response): {[x for x in dir(response) if not x.startswith('_')]}")
-                print(f"  - response.__dict__: {response.__dict__ if hasattr(response, '__dict__') else 'N/A'}")
-            
             if resp_text and resp_text.strip():
                 # ========================================================
-                # PIPELINE PEMBERSIHAN (CLEANING) UNTUK MENGAMANKAN TTS
+                # PIPELINE PEMBERSIHAN
                 # ========================================================
                 
-                # 1. Jika model mengembalikan format panjang bercampur analisis, coba ambil teks setelah salam "Waalaikumsalam"
-                if "Waalaikumsalam" in resp_text:
-                    match_salam = re.search(r"(Waalaikumsalam.*)", resp_text, re.DOTALL | re.IGNORECASE)
-                    if match_salam:
-                        resp_text = match_salam.group(1)
-                
-                # 2. Bersihkan karakter markdown aneh (*, #, ") agar TTS tidak crash
+                # 1. Bersihkan karakter markdown pengganggu
                 resp_text = resp_text.replace("*", "").replace("#", "").replace('"', '').replace('(', '').replace(')', '')
                 
-                # 3. Potong jika teks jawaban melebihi batasan kalimat wajar (Maksimal 4 kalimat awal)
-                sentences = re.split(r'(?<=[.!?])\s+', resp_text)
-                resp_text = " ".join(sentences[:4])
+                # 2. PECAH PER BARIS & CEK JAWABAN DARI BAWAH (BOTTOM-UP FILTER)
+                lines = [line.strip() for line in resp_text.split('\n') if line.strip()]
                 
+                final_answer = ""
+                # Kita periksa baris dari urutan paling bawah (paling akhir)
+                for line in reversed(lines):
+                    line_lower = line.lower()
+                    
+                    # Abaikan baris jika mengandung tanda titik dua pembuka log/draf (seperti 'Option satu:', 'Context:', dll)
+                    # ATAU mengandung kata kunci draf yang sudah kita ketahui
+                    if ":" in line or any(x in line_lower for x in [
+                        'user input', 'intent', 'goal', 'constraints', 'language', 
+                        'draft', 'refining', 'self-correction', 'user asks', 
+                        'option', 'direct?', 'no analysis', 'polite/clear', 'context', 'translation'
+                    ]):
+                        continue
+                    
+                    # Baris pertama yang bersih dari bawah adalah JAWABAN ASLI yang kita cari
+                    final_answer = line
+                    break
+                
+                # Fallback jika semua baris ternyata tercemar log (sangat jarang terjadi)
+                if not final_answer and lines:
+                    final_answer = lines[-1]
+                
+                resp_text = final_answer
+                
+                # ========================================================
+                # PENANGANAN KALIMAT GANTUNG (ANTI-TRUNCATION)
+                # ========================================================
+                if resp_text:
+                    # Cari tanda baca akhir terakhir (. atau ? atau !)
+                    last_punctuation_index = max(
+                        resp_text.rfind('.'), 
+                        resp_text.rfind('?'), 
+                        resp_text.rfind('!')
+                    )
+                    # Jika ada tanda baca ditemukan, potong teks tepat di tanda baca tersebut
+                    if last_punctuation_index != -1:
+                        resp_text = resp_text[:last_punctuation_index + 1].strip()
+
                 # ========================================================
 
                 normalized = normalize_text(resp_text)
                 print(f"[DEBUG-LLM] After clean & normalize_text: '{normalized[:100]}'")
-                save_chat_history(chat)
                 return normalized
             else:
                 print(f"[DEBUG-LLM] response.text is None/empty, will retry...")
@@ -228,7 +249,7 @@ def generate_response(prompt: str) -> str:
             if attempt < MAX_RETRIES:
                 time.sleep(delay)
 
-    # Fallback response jika semua attempt gagal atau response kosong
+    # Fallback response jika semua attempt gagal atau kosong
     fallback = f"Maaf, saya tidak bisa memproses permintaan Anda saat ini."
     print(f"[DEBUG-LLM] All attempts exhausted, returning fallback: '{fallback}'")
     return fallback
