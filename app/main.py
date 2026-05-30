@@ -197,8 +197,11 @@ async def voice_chat(
         if llm_response.startswith("[ERROR]"):
             raise HTTPException(status_code=500, detail=llm_response)
 
-        print(f"[DEBUG] Calling TTS with text: '{llm_response}'")
-        output_audio_path = transcribe_text_to_speech(llm_response)
+        # Melakukan normalisasi angka (Text Normalization) pada respons LLM sebelum masuk ke modul TTS
+        tts_ready_text = normalize_text(llm_response)
+
+        print(f"[DEBUG] Calling TTS with text: '{tts_ready_text}'")
+        output_audio_path = transcribe_text_to_speech(tts_ready_text)
         cleanup_task = BackgroundTask(lambda: [safe_delete(upload_path), safe_delete(output_audio_path)])
 
         if format == "json":
