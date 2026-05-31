@@ -21,7 +21,7 @@ app/whisper.cpp/
 storage/chat_history.json
 storage/rate_state.json
 
-# Audio saja di dalam data
+# Audio 
 data/audio/
 data/output_audio/
 
