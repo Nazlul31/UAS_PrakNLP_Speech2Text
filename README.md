@@ -16,31 +16,43 @@ Aplikasi ini mengolah input audio melalui beberapa tahapan modular yang divisual
 NLP_Checkpoint2_UAS/
 │
 ├── app/
-│   ├── coqui_utils/       # Model dan config Coqui TTS
-│   ├── main.py            # Endpoint utama FastAPI
-│   ├── llm.py             # Integrasi Gemini API
-│   ├── stt.py             # Transkripsi suara (whisper.cpp)
-│   ├── tts.py             # TTS dengan Coqui
-│   ├── utils.py           # Fungsi pembantu penataan teks & normalisasi
-│   └── temp/              # Ruang penyimpanan temporer untuk file
-│
-├── storage/               # Direktori penyimpanan state aplikasi
-│   ├── chat_history.json  # Rekam jejak dialog interaktif
-│   └── rate_state.json    # Berkas kontrol pembatas request (RPM/RPD)
+│   ├── coqui_utils/          # Model dan config Coqui TTS
+│   ├── temp/                 # Ruang penyimpanan temporer untuk file backend internal
+│   ├── whisper.cpp/          # Repositori lokal Whisper untuk inferensi STT cepat
+│   ├── llm.py                # Integrasi Gemini API
+│   ├── main.py               # Endpoint utama FastAPI
+│   ├── stt.py                # Transkripsi suara (whisper.cpp)
+│   ├── tts.py                # TTS dengan Coqui
+│   └── utils.py              # Fungsi pembantu penataan teks & normalisasi leksikon
 │
 ├── data/
-│   └── audio/             # Semua file audio
+│   ├── audio/                # Direktori penyimpanan korpus audio input (.wav)
+│   ├── output_audio/         # Hasil sintesis suara luaran dari komponen TTS
+│   ├── processed/            # Rekam jejak atau berkas yang telah selesai diproses
+│   └── ground_truth.json     # Berkas referensi teks asli untuk kalkulasi akurasi
 │
 ├── gradio_app/
-│   └── app.py             # Frontend dengan Gradio
+│   └── app.py                # Frontend dengan Gradio
 │
-├── tests/                 # Direktori unit test
-│   └── test_language_analysis.py
+├── log/
+│   ├── analisis_pipeline.csv # Rekapitulasi evaluasi pipa pemrosesan secara real-time
+│   └── server_errors.log     # Berkas pencatatan galat operasional server backend
 │
-├── .env                   # Menyimpan Gemini API Key
-├── requirements.txt       # Daftar dependensi Python
-├── analisis_pipeline.py   # Batch pipeline untuk evaluasi korpus
-└── processing.py          # Modul prapemrosesan audio kustom
+├── storage/                  # Direktori penyimpanan state aplikasi (chat_history, rate-state)
+│
+├── temp/                     # Folder temporer global proyek
+│
+├── tests/                    # Direktori unit test
+│   └── test_language_analysis.py # Berkas pengujian unit test untuk analisis bahasa
+│
+├── venv/                     # Lingkungan virtual Python (Virtual Environment)
+├── .env                      # Menyimpan Gemini API Key
+├── .gitignore                # Daftar berkas/folder yang diabaikan oleh Git
+├── requirements.txt          # Daftar dependensi Python yang wajib diinstal
+├── analisis_pipeline.py      # Skrip otomatisasi pengujian massal korpus gabungan
+├── bersihkan_data.py         # Skrip utilitas pra-pemrosesan data korpus
+├── hitung_total.py           # Skrip kalkulasi final metrik akurasi WER dan CER murni
+├── processing.py             # Modul kustom untuk pemrosesan data audio
 ```
 
 ## Ketentuan Teknis & Konfigurasi Model

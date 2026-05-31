@@ -288,7 +288,6 @@ def _save_progress_to_csv(hasil_analisis, out_csv):
 
 if __name__ == "__main__":
     try:
-        # Jalankan langsung dengan parameter folder audio dan prefix NPM kamu
         jalankan_uji_korpus("data/audio")
     except Exception as exc:
         print(f"Error: {exc}")

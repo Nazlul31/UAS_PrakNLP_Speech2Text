@@ -23,6 +23,7 @@ storage/rate_state.json
 
 # Audio saja di dalam data
 data/audio/
+data/output_audio/
 
 # Storage dan semua isinya
 storage/**
